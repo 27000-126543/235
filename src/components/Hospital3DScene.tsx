@@ -331,6 +331,94 @@ const ResourceMarker: React.FC<{ position: [number, number, number]; type: strin
   );
 };
 
+interface AnimatedResourceMovementProps {
+  from: [number, number, number];
+  to: [number, number, number];
+  type: 'bed' | 'staff' | 'equipment';
+  id: string;
+}
+
+const AnimatedResourceMovement: React.FC<AnimatedResourceMovementProps> = ({ from, to, type, id }) => {
+  const markerRef = useRef<THREE.Group>(null);
+  const trailRef = useRef<THREE.Points>(null);
+  const startTime = useRef(Date.now());
+  const duration = 8000;
+
+  const colors: Record<string, string> = {
+    bed: '#00cc66',
+    staff: '#ff9900',
+    equipment: '#0099ff',
+  };
+
+  const curve = useMemo(() => {
+    const midY = Math.max(from[1], to[1]) + 6 + Math.random() * 3;
+    const midX = (from[0] + to[0]) / 2 + (Math.random() - 0.5) * 4;
+    const midZ = (from[2] + to[2]) / 2 + (Math.random() - 0.5) * 4;
+    const points = [
+      new THREE.Vector3(...from),
+      new THREE.Vector3(midX, midY, midZ),
+      new THREE.Vector3(...to),
+    ];
+    return new THREE.CatmullRomCurve3(points);
+  }, [from, to]);
+
+  const tubeGeometry = useMemo(() => {
+    return new THREE.TubeGeometry(curve, 64, 0.08, 8, false);
+  }, [curve]);
+
+  useFrame((state) => {
+    const elapsed = (Date.now() - startTime.current) % duration;
+    const t = elapsed / duration;
+    const position = new THREE.Vector3();
+    curve.getPoint(t, position);
+
+    if (markerRef.current) {
+      markerRef.current.position.copy(position);
+      markerRef.current.rotation.y = state.clock.elapsedTime * 3;
+    }
+
+    if (trailRef.current) {
+      const positions = trailRef.current.geometry.attributes.position as THREE.BufferAttribute;
+      const trailLength = 20;
+      for (let i = trailLength - 1; i > 0; i--) {
+        const prevT = Math.max(0, t - (i / trailLength) * 0.3);
+        const trailPos = new THREE.Vector3();
+        curve.getPoint(prevT, trailPos);
+        positions.setXYZ(i, trailPos.x, trailPos.y, trailPos.z);
+      }
+      positions.setXYZ(0, position.x, position.y, position.z);
+      positions.needsUpdate = true;
+    }
+  });
+
+  return (
+    <group>
+      <mesh>
+        <primitive object={tubeGeometry} attach="geometry" />
+        <meshBasicMaterial color={colors[type]} transparent opacity={0.2} />
+      </mesh>
+      <points ref={trailRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={20}
+            array={new Float32Array(20 * 3)}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <pointsMaterial color={colors[type]} size={0.25} transparent opacity={0.8} sizeAttenuation />
+      </points>
+      <group ref={markerRef}>
+        <mesh>
+          <octahedronGeometry args={[0.6]} />
+          <meshStandardMaterial color={colors[type]} emissive={colors[type]} emissiveIntensity={0.8} />
+        </mesh>
+        <pointLight color={colors[type]} intensity={1.5} distance={8} />
+      </group>
+    </group>
+  );
+};
+
 const SceneContent: React.FC = () => {
   const { currentView, setCurrentView, departments, beds, wasteBins, activeEmergencyPlan, resourceMovements } = useHospitalStore();
   
@@ -383,20 +471,15 @@ const SceneContent: React.FC = () => {
         </>
       )}
 
-      {resourceMovements.map((movement) => {
-        const t = (Date.now() % 5000) / 5000;
-        const x = movement.from[0] + (movement.to[0] - movement.from[0]) * t;
-        const y = movement.from[1] + (movement.to[1] - movement.from[1]) * t + Math.sin(t * Math.PI) * 3;
-        const z = movement.from[2] + (movement.to[2] - movement.from[2]) * t;
-        return (
-          <ResourceMarker
-            key={movement.id}
-            position={[x, y, z]}
-            type={movement.type}
-            progress={t}
-          />
-        );
-      })}
+      {resourceMovements.map((movement) => (
+        <AnimatedResourceMovement
+          key={movement.id}
+          id={movement.id}
+          from={movement.from}
+          to={movement.to}
+          type={movement.type}
+        />
+      ))}
 
       <OrbitControls
         enablePan={true}
