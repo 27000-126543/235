@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ws-server": "node ws-server.js",
+    "dev-all": "start /b node ws-server.js && vite"
   },
   "dependencies": {
     "@react-three/drei": "^9.92.7",
@@ -28,6 +30,7 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "ws": "^8.21.0"
   }
 }

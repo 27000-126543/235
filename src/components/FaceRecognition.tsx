@@ -1,9 +1,16 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import * as faceapi from 'face-api.js';
 
 interface FaceRecognitionProps {
   onSuccess: () => void;
   onCancel: () => void;
 }
+
+const MODEL_PATHS = [
+  '/models',
+  'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model',
+  'https://unpkg.com/@vladmandic/face-api@1.7.12/model',
+];
 
 const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -12,11 +19,40 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
   const animationRef = useRef<number>(0);
   
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingModel, setIsLoadingModel] = useState(true);
+  const [modelLoadError, setModelLoadError] = useState('');
   const [error, setError] = useState('');
   const [detectionProgress, setDetectionProgress] = useState(0);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceBox, setFaceBox] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [scanComplete, setScanComplete] = useState(false);
+  const modelsLoaded = useRef(false);
+
+  const loadModels = useCallback(async () => {
+    for (const modelPath of MODEL_PATHS) {
+      try {
+        console.log(`[FaceAPI] 尝试从 ${modelPath} 加载模型...`);
+        
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(modelPath),
+          faceapi.nets.faceLandmark68Net.loadFromUri(modelPath),
+        ]);
+        
+        modelsLoaded.current = true;
+        setIsLoadingModel(false);
+        setModelLoadError('');
+        console.log(`[FaceAPI] ✅ 模型加载成功 (来源: ${modelPath})`);
+        return;
+      } catch (err) {
+        console.warn(`[FaceAPI] ⚠️ 从 ${modelPath} 加载失败:`, err);
+      }
+    }
+    
+    console.error('[FaceAPI] ❌ 所有模型加载路径均失败');
+    modelsLoaded.current = false;
+    setIsLoadingModel(false);
+    setModelLoadError('AI模型加载失败，将使用基础肤色检测');
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -41,18 +77,44 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
     }
   }, []);
 
-  const detectFace = useCallback(() => {
+  const detectFace = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas) return false;
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return false;
 
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    if (modelsLoaded.current) {
+      try {
+        const options = new faceapi.TinyFaceDetectorOptions({
+          inputSize: 320,
+          scoreThreshold: 0.5
+        });
+        
+        const detections = await faceapi.detectAllFaces(video, options).withFaceLandmarks();
+        
+        if (detections.length > 0) {
+          const detection = detections[0];
+          const box = detection.detection.box;
+          
+          setFaceBox({
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height
+          });
+          return true;
+        }
+      } catch (err) {
+        console.error('[FaceAPI] 检测错误:', err);
+      }
+    }
     
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
@@ -99,29 +161,29 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
         width: boxWidth,
         height: boxHeight
       });
-      setFaceDetected(true);
-    } else {
-      setFaceDetected(false);
     }
+    
+    return detected;
   }, []);
 
   const startFaceDetection = useCallback(() => {
     let frameCount = 0;
     let successFrames = 0;
     
-    const detect = () => {
-      detectFace();
+    const detect = async () => {
+      const detected = await detectFace();
+      setFaceDetected(detected);
       frameCount++;
       
-      if (faceDetected) {
+      if (detected) {
         successFrames++;
-        setDetectionProgress(Math.min(100, (successFrames / 60) * 100));
+        setDetectionProgress(Math.min(100, (successFrames / 45) * 100));
         
-        if (successFrames >= 60) {
+        if (successFrames >= 45) {
           setScanComplete(true);
           setTimeout(() => {
             onSuccess();
-          }, 500);
+          }, 800);
           return;
         }
       }
@@ -132,10 +194,10 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
     };
     
     animationRef.current = requestAnimationFrame(detect);
-  }, [detectFace, faceDetected, onSuccess]);
+  }, [detectFace, onSuccess]);
 
   useEffect(() => {
-    startCamera();
+    loadModels();
     
     return () => {
       if (streamRef.current) {
@@ -145,7 +207,7 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [startCamera]);
+  }, [loadModels]);
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
@@ -169,9 +231,14 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
         ) : (
           <>
             <div className="relative rounded-xl overflow-hidden bg-black mx-auto" style={{ width: 320, height: 240 }}>
-              {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-info animate-pulse">正在启动摄像头...</div>
+              {(isLoading || isLoadingModel) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/80">
+                  <div className="text-info animate-pulse mb-3">
+                    {isLoadingModel ? '正在加载AI检测模型...' : '正在启动摄像头...'}
+                  </div>
+                  {modelLoadError && (
+                    <div className="text-warning text-xs mt-2">{modelLoadError}</div>
+                  )}
                 </div>
               )}
               
@@ -180,6 +247,11 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
                 className="w-full h-full object-cover transform -scale-x-100"
                 playsInline
                 muted
+                onLoadedMetadata={() => {
+                  if (videoRef.current && !isLoadingModel) {
+                    startCamera();
+                  }
+                }}
               />
               
               <canvas ref={canvasRef} className="hidden" />
@@ -194,9 +266,21 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
                     height: `${(faceBox.height / 480) * 100}%`,
                   }}
                 >
-                  <div className="absolute -top-6 left-0 text-success text-xs font-medium">
-                    检测到人脸
+                  <div className="absolute -top-6 left-0 text-success text-xs font-medium flex items-center gap-1">
+                    {modelsLoaded.current ? (
+                      <>
+                        <span>🤖</span> AI检测
+                      </>
+                    ) : (
+                      <>
+                        <span>👁️</span> 基础检测
+                      </>
+                    )}
                   </div>
+                  <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-success -mt-1 -ml-1" />
+                  <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-success -mt-1 -mr-1" />
+                  <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-success -mb-1 -ml-1" />
+                  <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-success -mb-1 -mr-1" />
                 </div>
               )}
 
@@ -222,7 +306,7 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
               <div className="flex items-center justify-between mb-2">
                 <span className="text-gray-400 text-sm">识别进度</span>
                 <span className={`text-sm font-medium ${faceDetected ? 'text-success' : 'text-warning'}`}>
-                  {faceDetected ? '正在识别...' : '请将面部对准框内'}
+                  {scanComplete ? '认证完成' : faceDetected ? '正在识别面部特征...' : '请将面部对准框内'}
                 </span>
               </div>
               <div className="w-full bg-dark/50 rounded-full h-3 overflow-hidden">
@@ -233,6 +317,13 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
                   style={{ width: `${detectionProgress}%` }}
                 />
               </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-center gap-2 text-xs">
+              <span className={`inline-block w-2 h-2 rounded-full ${modelsLoaded.current ? 'bg-success' : 'bg-warning'}`} />
+              <span className="text-gray-400">
+                {modelsLoaded.current ? 'AI模型已就绪 (TinyFaceDetector)' : modelLoadError || 'AI模型加载中...'}
+              </span>
             </div>
 
             <div className="mt-6 flex justify-center">
@@ -249,8 +340,8 @@ const FaceRecognition: React.FC<FaceRecognitionProps> = ({ onSuccess, onCancel }
               <ul className="text-xs text-gray-400 space-y-1">
                 <li>• 请确保光线充足，面部清晰可见</li>
                 <li>• 请将面部置于扫描框内</li>
-                <li>• 系统通过肤色检测算法识别面部区域</li>
-                <li>• 保持稳定约3秒即可完成认证</li>
+                <li>• 优先加载本地模型，失败则使用CDN</li>
+                <li>• 如需本地加载请运行: <code className="text-info">node download-models.js</code></li>
               </ul>
             </div>
           </>

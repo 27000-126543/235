@@ -5,6 +5,7 @@ import {
   PurchaseRequest, DailyReport, UserRole, Surgery
 } from '../types';
 import { idbService, IDBRequest } from '../utils/indexedDB';
+import { hospitalWS, WebSocketMessage, BedAbnormalEvent } from '../utils/webSocketService';
 
 const mockUsers: User[] = [
   { id: '1', name: '张护士', role: 'nurse', department: '内科' },
@@ -206,14 +207,14 @@ interface HospitalState {
   addNotification: (message: string, type?: 'info' | 'warning' | 'danger' | 'success') => void;
   clearNotification: (id: string) => void;
 
-  startVitalSignsSimulation: () => void;
+  startVitalSignsSimulation: () => Promise<void>;
   stopVitalSignsSimulation: () => void;
+  triggerManualAlert: (bedId: string) => void;
 
   generateDailyReport: (date: string) => DailyReport;
 }
 
 let vitalSignsInterval: number | null = null;
-let wsSimulationInterval: number | null = null;
 
 export const useHospitalStore = create<HospitalState>((set, get) => ({
   currentUser: null,
@@ -720,30 +721,39 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
     }));
   },
 
-  startVitalSignsSimulation: () => {
+  startVitalSignsSimulation: async () => {
     if (vitalSignsInterval) return;
+    
+    const connected = await hospitalWS.connect();
+    set({ wsConnected: connected });
+
+    hospitalWS.subscribe((message: WebSocketMessage) => {
+      if (message.type === 'bed_abnormal') {
+        const event = message.payload as BedAbnormalEvent;
+        get().addNotification(
+          `🚨 [实时推送] 床位异常: ${event.bedNumber} - ${event.patientName} ${event.vitalSign}: ${event.value}`,
+          event.severity
+        );
+
+        const bed = get().beds.find(b => b.id === event.bedId);
+        if (bed) {
+          get().setBedAbnormal(event.bedId, true);
+        }
+      } else if (message.type === 'connection_ack') {
+        console.log('[WS] 服务器确认连接:', message.payload);
+        get().addNotification('✅ 已连接到医院实时数据推送服务', 'success');
+      } else if (message.type === 'system_status') {
+        set({ wsConnected: true });
+      }
+    });
     
     vitalSignsInterval = window.setInterval(() => {
       const beds = get().beds;
       const randomBed = beds[Math.floor(Math.random() * beds.length)];
       if (randomBed && randomBed.isOccupied) {
         get().updateBedVitalSigns(randomBed.id);
-        
-        const updatedBed = get().beds.find(b => b.id === randomBed.id);
-        if (updatedBed?.isAbnormal && !randomBed.isAbnormal) {
-          get().addNotification(
-            `⚠️ 生命体征异常: ${updatedBed.roomNumber}室${updatedBed.bedNumber}床 - ${updatedBed.patient?.name || '患者'}`,
-            'danger'
-          );
-        }
       }
-    }, 5000);
-
-    wsSimulationInterval = window.setInterval(() => {
-      set({ wsConnected: true });
-    }, 1000);
-
-    set({ wsConnected: true });
+    }, 10000);
   },
 
   stopVitalSignsSimulation: () => {
@@ -751,11 +761,26 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       clearInterval(vitalSignsInterval);
       vitalSignsInterval = null;
     }
-    if (wsSimulationInterval) {
-      clearInterval(wsSimulationInterval);
-      wsSimulationInterval = null;
-    }
+    hospitalWS.disconnect();
     set({ wsConnected: false });
+  },
+
+  triggerManualAlert: (bedId: string) => {
+    const bed = get().beds.find(b => b.id === bedId);
+    if (!bed) return;
+    
+    const event: BedAbnormalEvent = {
+      bedId: bed.id,
+      bedNumber: `${bed.roomNumber}室${bed.bedNumber}床`,
+      patientName: bed.patient?.name || '未知患者',
+      vitalSign: '手动触发告警',
+      value: '测试',
+      severity: 'warning',
+      timestamp: new Date().toISOString()
+    };
+    
+    hospitalWS.sendManualAlert(event);
+    get().addNotification('📤 已向服务器发送手动告警', 'info');
   },
 
   generateDailyReport: (date) => {
