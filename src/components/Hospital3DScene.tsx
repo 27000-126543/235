@@ -304,33 +304,6 @@ const FlowPath: React.FC<FlowPathProps> = ({ start, end, color = '#00ffff', acti
   );
 };
 
-const ResourceMarker: React.FC<{ position: [number, number, number]; type: string; progress?: number }> = ({ position, type }) => {
-  const meshRef = useRef<THREE.Group>(null);
-
-  useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y = state.clock.elapsedTime * 2;
-      meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 3) * 0.3;
-    }
-  });
-
-  const colors: Record<string, string> = {
-    bed: '#00cc66',
-    staff: '#ff9900',
-    equipment: '#0099ff',
-  };
-
-  return (
-    <group ref={meshRef} position={position}>
-      <mesh>
-        <octahedronGeometry args={[0.5]} />
-        <meshStandardMaterial color={colors[type] || '#ffffff'} emissive={colors[type]} emissiveIntensity={0.5} />
-      </mesh>
-      <pointLight color={colors[type]} intensity={1} distance={5} />
-    </group>
-  );
-};
-
 interface AnimatedResourceMovementProps {
   from: [number, number, number];
   to: [number, number, number];
@@ -338,7 +311,7 @@ interface AnimatedResourceMovementProps {
   id: string;
 }
 
-const AnimatedResourceMovement: React.FC<AnimatedResourceMovementProps> = ({ from, to, type, id }) => {
+const AnimatedResourceMovement: React.FC<AnimatedResourceMovementProps> = ({ from, to, type }) => {
   const markerRef = useRef<THREE.Group>(null);
   const trailRef = useRef<THREE.Points>(null);
   const startTime = useRef(Date.now());

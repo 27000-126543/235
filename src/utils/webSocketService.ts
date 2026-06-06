@@ -29,8 +29,8 @@ class HospitalWebSocketService {
   private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   private readonly LOCAL_WS_URL = 'ws://localhost:8080';
 
@@ -72,7 +72,7 @@ class HospitalWebSocketService {
         }
       };
 
-      this.ws.onerror = (error) => {
+      this.ws.onerror = (_error) => {
         console.warn(`[WS] ⚠️ 连接错误 (尝试 ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
         console.warn(`[WS] 💡 请确认已运行: npm run ws-server`);
       };

@@ -7,6 +7,16 @@ import {
 import { idbService, IDBRequest } from '../utils/indexedDB';
 import { hospitalWS, WebSocketMessage, BedAbnormalEvent } from '../utils/webSocketService';
 
+const BUILDING_COORDINATES: Record<string, [number, number, number]> = {
+  outpatient: [-18, 6, -12],
+  inpatient: [0, 10, -15],
+  emergency: [18, 8, -10],
+  pharmacy: [-22, 6, 6],
+  operating: [0, 7, 10],
+  cssd: [22, 5, 8],
+  waste: [30, 4, -6],
+};
+
 const mockUsers: User[] = [
   { id: '1', name: '张护士', role: 'nurse', department: '内科' },
   { id: '2', name: '李医生', role: 'doctor', department: '外科' },
@@ -143,6 +153,8 @@ interface ResourceMovement {
   from: [number, number, number];
   to: [number, number, number];
   progress: number;
+  sourceBuilding?: string;
+  targetBuilding?: string;
 }
 
 interface HospitalState {
@@ -659,21 +671,81 @@ export const useHospitalStore = create<HospitalState>((set, get) => ({
       const availableRooms = get().operationRooms.filter(r => r.status === 'available').map(r => r.id);
       const staff = mockUsers.filter(u => u.role !== 'nurse').map(u => u.id);
 
+      const fromInpatient = BUILDING_COORDINATES.inpatient;
+      const fromOperating = BUILDING_COORDINATES.operating;
+      const fromOutpatient = BUILDING_COORDINATES.outpatient;
+      const fromPharmacy = BUILDING_COORDINATES.pharmacy;
+      const toEmergency = BUILDING_COORDINATES.emergency;
+
       const movements: ResourceMovement[] = [
-        ...availableBeds.slice(0, 5).map((_bedId, i) => ({
+        ...availableBeds.slice(0, 4).map((_bedId, i) => ({
           id: `move_bed_${i}`,
           type: 'bed' as const,
-          from: [0, 12, -12] as [number, number, number],
-          to: [15, 8, -8] as [number, number, number],
+          from: [
+            fromInpatient[0] + (Math.random() - 0.5) * 4,
+            fromInpatient[1] + 2,
+            fromInpatient[2] + (Math.random() - 0.5) * 4
+          ] as [number, number, number],
+          to: [
+            toEmergency[0] + (Math.random() - 0.5) * 4,
+            toEmergency[1] + 2,
+            toEmergency[2] + (Math.random() - 0.5) * 4
+          ] as [number, number, number],
           progress: 0,
+          sourceBuilding: 'inpatient',
+          targetBuilding: 'emergency',
         })),
-        ...availableRooms.slice(0, 2).map((_roomId, i) => ({
+        ...availableRooms.slice(0, 3).map((_roomId, i) => ({
           id: `move_staff_${i}`,
           type: 'staff' as const,
-          from: [0, 8, 8] as [number, number, number],
-          to: [15, 8, -8] as [number, number, number],
+          from: [
+            fromOperating[0] + (Math.random() - 0.5) * 3,
+            fromOperating[1] + 2,
+            fromOperating[2] + (Math.random() - 0.5) * 3
+          ] as [number, number, number],
+          to: [
+            toEmergency[0] + (Math.random() - 0.5) * 4,
+            toEmergency[1] + 2,
+            toEmergency[2] + (Math.random() - 0.5) * 4
+          ] as [number, number, number],
           progress: 0,
+          sourceBuilding: 'operating',
+          targetBuilding: 'emergency',
         })),
+        {
+          id: 'move_equipment_0',
+          type: 'equipment' as const,
+          from: [
+            fromPharmacy[0] + (Math.random() - 0.5) * 2,
+            fromPharmacy[1] + 2,
+            fromPharmacy[2] + (Math.random() - 0.5) * 2
+          ] as [number, number, number],
+          to: [
+            toEmergency[0] + (Math.random() - 0.5) * 3,
+            toEmergency[1] + 2,
+            toEmergency[2] + (Math.random() - 0.5) * 3
+          ] as [number, number, number],
+          progress: 0,
+          sourceBuilding: 'pharmacy',
+          targetBuilding: 'emergency',
+        },
+        {
+          id: 'move_staff_3',
+          type: 'staff' as const,
+          from: [
+            fromOutpatient[0] + (Math.random() - 0.5) * 3,
+            fromOutpatient[1] + 2,
+            fromOutpatient[2] + (Math.random() - 0.5) * 3
+          ] as [number, number, number],
+          to: [
+            toEmergency[0] + (Math.random() - 0.5) * 4,
+            toEmergency[1] + 2,
+            toEmergency[2] + (Math.random() - 0.5) * 4
+          ] as [number, number, number],
+          progress: 0,
+          sourceBuilding: 'outpatient',
+          targetBuilding: 'emergency',
+        }
       ];
 
       set(state => ({
