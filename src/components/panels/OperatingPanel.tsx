@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
-import { OperationRoom, Surgery } from '../../types';
+import { OperationRoom } from '../../types';
 
 const OperatingPanel: React.FC = () => {
-  const { operationRooms, scheduleSurgery, addNotification } = useHospitalStore();
+  const { operationRooms, scheduleSurgery, cancelSurgery, setRoomStatus, addNotification } = useHospitalStore();
   const [selectedRoom, setSelectedRoom] = useState<OperationRoom | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [newSurgery, setNewSurgery] = useState({
@@ -39,11 +39,21 @@ const OperatingPanel: React.FC = () => {
     if (selectedRoom) {
       const success = scheduleSurgery(newSurgery, selectedRoom.id);
       if (success) {
-        addNotification(`手术已成功预约到${selectedRoom.name}`);
         setShowScheduleModal(false);
         setNewSurgery({ patientName: '', surgeryName: '', surgeon: '', startTime: '08:00', endTime: '09:00' });
       }
     }
+  };
+
+  const handleStatusChange = (roomId: string, status: OperationRoom['status']) => {
+    setRoomStatus(roomId, status);
+    const room = operationRooms.find(r => r.id === roomId);
+    addNotification(`手术室${room?.name}状态更新为: ${statusNames[status]}`, 'info');
+  };
+
+  const handleCancelSurgery = (roomId: string, surgeryId: string) => {
+    cancelSurgery(roomId, surgeryId);
+    addNotification('手术已取消', 'warning');
   };
 
   return (
@@ -67,13 +77,21 @@ const OperatingPanel: React.FC = () => {
               <span className={`w-3 h-3 rounded-full ${statusColors[room.status]} ${room.status === 'occupied' ? 'animate-pulse' : ''}`} />
             </div>
             <div className="text-gray-400 text-sm">{room.floor}楼</div>
-            <div className={`text-sm mt-2 ${
-              room.status === 'available' ? 'text-success' :
-              room.status === 'occupied' ? 'text-danger' :
-              room.status === 'cleaning' ? 'text-warning' : 'text-gray-400'
-            }`}>
-              {statusNames[room.status]}
-            </div>
+            <select
+              value={room.status}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => handleStatusChange(room.id, e.target.value as OperationRoom['status'])}
+              className={`w-full mt-2 px-2 py-1 text-sm bg-dark/50 border border-gray-700 rounded cursor-pointer ${
+                room.status === 'available' ? 'text-success' :
+                room.status === 'occupied' ? 'text-danger' :
+                room.status === 'cleaning' ? 'text-warning' : 'text-gray-400'
+              }`}
+            >
+              <option value="available">空闲</option>
+              <option value="occupied">使用中</option>
+              <option value="cleaning">清洁中</option>
+              <option value="maintenance">维护中</option>
+            </select>
             {room.currentSurgery && (
               <div className="mt-2 p-2 bg-dark/50 rounded text-xs">
                 <div className="text-white">{room.currentSurgery.surgeryName}</div>
@@ -114,14 +132,24 @@ const OperatingPanel: React.FC = () => {
                 >
                   <div className="flex items-center justify-between">
                     <div className="text-white font-medium">{surgery.surgeryName}</div>
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      surgery.status === 'scheduled' ? 'bg-info/20 text-info' :
-                      surgery.status === 'in_progress' ? 'bg-danger/20 text-danger' :
-                      surgery.status === 'completed' ? 'bg-success/20 text-success' :
-                      'bg-gray-500/20 text-gray-400'
-                    }`}>
-                      {surgeryStatusNames[surgery.status]}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        surgery.status === 'scheduled' ? 'bg-info/20 text-info' :
+                        surgery.status === 'in_progress' ? 'bg-danger/20 text-danger' :
+                        surgery.status === 'completed' ? 'bg-success/20 text-success' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {surgeryStatusNames[surgery.status]}
+                      </span>
+                      {surgery.status === 'scheduled' && (
+                        <button
+                          onClick={() => handleCancelSurgery(selectedRoom.id, surgery.id)}
+                          className="text-xs px-2 py-0.5 bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors"
+                        >
+                          取消
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between mt-2 text-sm">
                     <span className="text-gray-400">患者: {surgery.patientName}</span>
@@ -176,6 +204,7 @@ const OperatingPanel: React.FC = () => {
                           className={`absolute top-1 bottom-1 rounded text-xs flex items-center justify-center text-white overflow-hidden ${
                             surgery.status === 'completed' ? 'bg-success/50' :
                             surgery.status === 'in_progress' ? 'bg-danger animate-pulse' :
+                            surgery.status === 'cancelled' ? 'bg-gray-500/50' :
                             'bg-purple-500/70'
                           }`}
                           style={{ left: `${left}%`, width: `${width}%` }}

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
 
 const WastePanel: React.FC = () => {
-  const { wasteBins, pickupWaste, addNotification } = useHospitalStore();
+  const { wasteBins, pickupWaste, updateWasteLevel, addNotification } = useHospitalStore();
+  const [selectedBin, setSelectedBin] = useState<string | null>(null);
 
   const typeColors: Record<string, string> = {
     infectious: 'bg-yellow-500',
@@ -25,7 +26,11 @@ const WastePanel: React.FC = () => {
   const handleNotifyAll = () => {
     const binsToPickup = wasteBins.filter(w => w.needsPickup);
     binsToPickup.forEach(bin => pickupWaste(bin.id));
-    addNotification(`已通知转运 ${binsToPickup.length} 个垃圾桶`);
+    addNotification(`已通知转运 ${binsToPickup.length} 个垃圾桶`, 'info');
+  };
+
+  const handleLevelChange = (binId: string, level: number) => {
+    updateWasteLevel(binId, level);
   };
 
   const binsToPickup = wasteBins.filter(w => w.needsPickup);
@@ -86,7 +91,7 @@ const WastePanel: React.FC = () => {
                   <div className="flex-1 mr-3">
                     <div className="w-full bg-dark/50 rounded-full h-2">
                       <div
-                        className="bg-danger h-2 rounded-full"
+                        className="bg-danger h-2 rounded-full transition-all"
                         style={{ width: `${bin.fillLevel}%` }}
                       />
                     </div>
@@ -111,12 +116,13 @@ const WastePanel: React.FC = () => {
           {wasteBins.map(bin => (
             <div
               key={bin.id}
-              className={`p-4 rounded-lg border transition-all ${
+              onClick={() => setSelectedBin(selectedBin === bin.id ? null : bin.id)}
+              className={`p-4 rounded-lg border transition-all cursor-pointer ${
                 bin.needsPickup
                   ? 'bg-danger/10 border-danger/50'
                   : bin.fillLevel > 60
                   ? 'bg-warning/10 border-warning/30'
-                  : 'bg-dark/30 border-gray-700'
+                  : 'bg-dark/30 border-gray-700 hover:border-info/50'
               }`}
             >
               <div className="flex flex-col items-center">
@@ -139,13 +145,41 @@ const WastePanel: React.FC = () => {
                     {bin.fillLevel}%
                   </div>
                 </div>
-                {bin.needsPickup && (
-                  <button
-                    onClick={() => handlePickup(bin.id)}
-                    className="mt-2 w-full py-1 bg-danger/30 text-danger text-xs rounded hover:bg-danger/40 transition-colors"
-                  >
-                    通知清运
-                  </button>
+
+                {selectedBin === bin.id && (
+                  <div className="w-full mt-3 pt-3 border-t border-gray-700 space-y-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={bin.fillLevel}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => handleLevelChange(bin.id, parseInt(e.target.value))}
+                      className="w-full accent-amber-500"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleLevelChange(bin.id, Math.max(0, bin.fillLevel - 10)); }}
+                        className="flex-1 py-1 bg-gray-700 text-white text-xs rounded hover:bg-gray-600"
+                      >
+                        -10%
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleLevelChange(bin.id, Math.min(100, bin.fillLevel + 10)); }}
+                        className="flex-1 py-1 bg-gray-700 text-white text-xs rounded hover:bg-gray-600"
+                      >
+                        +10%
+                      </button>
+                    </div>
+                    {!bin.needsPickup && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handlePickup(bin.id); }}
+                        className="w-full py-1 bg-amber-700/30 text-amber-500 text-xs rounded hover:bg-amber-700/50"
+                      >
+                        标记清运
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

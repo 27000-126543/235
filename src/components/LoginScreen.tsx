@@ -1,40 +1,45 @@
 import React, { useState } from 'react';
 import { useHospitalStore } from '../store/useHospitalStore';
+import FaceRecognition from './FaceRecognition';
 
 const LoginScreen: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [useFaceRecognition, setUseFaceRecognition] = useState(false);
+  const [showFaceModal, setShowFaceModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [faceScanProgress, setFaceScanProgress] = useState(0);
   const login = useHospitalStore(state => state.login);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
-
+    
     if (useFaceRecognition) {
-      setFaceScanProgress(0);
-      const interval = setInterval(() => {
-        setFaceScanProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            return 100;
-          }
-          return prev + 10;
-        });
-      }, 150);
+      setShowFaceModal(true);
+      return;
     }
-
+    
+    setIsLoading(true);
     try {
-      const success = await login(username || 'admin', password, useFaceRecognition);
+      const success = await login(username || 'admin', password, false);
       if (!success) {
         setError('用户名或密码错误');
       }
     } catch (err) {
       setError('登录失败，请重试');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFaceSuccess = async () => {
+    setShowFaceModal(false);
+    setIsLoading(true);
+    try {
+      await login(username || 'face_user', '', true);
+    } catch (err) {
+      setError('人脸识别登录失败');
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +98,7 @@ const LoginScreen: React.FC = () => {
               onChange={e => setPassword(e.target.value)}
               placeholder="请输入密码"
               className="w-full px-4 py-3 bg-dark/50 border border-info/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-info focus:ring-1 focus:ring-info transition-all"
-              disabled={isLoading}
+              disabled={isLoading || useFaceRecognition}
             />
           </div>
 
@@ -110,22 +115,19 @@ const LoginScreen: React.FC = () => {
             </label>
           </div>
 
-          {useFaceRecognition && isLoading && (
+          {useFaceRecognition && (
             <div className="p-4 bg-info/10 rounded-lg border border-info/30">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full border-2 border-info animate-pulse flex items-center justify-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full border-2 border-info flex items-center justify-center">
                   <svg className="w-6 h-6 text-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                 </div>
-                <span className="text-sm text-info">正在进行人脸识别...</span>
-              </div>
-              <div className="w-full bg-dark/50 rounded-full h-2">
-                <div
-                  className="bg-info h-2 rounded-full transition-all duration-150"
-                  style={{ width: `${faceScanProgress}%` }}
-                />
+                <div>
+                  <div className="text-sm text-info font-medium">摄像头人脸识别</div>
+                  <div className="text-xs text-gray-400">点击登录后将启动摄像头</div>
+                </div>
               </div>
             </div>
           )}
@@ -141,16 +143,49 @@ const LoginScreen: React.FC = () => {
             disabled={isLoading}
             className="w-full py-3 px-4 bg-gradient-to-r from-primary to-info text-white font-medium rounded-lg hover:from-primary/90 hover:to-info/90 focus:outline-none focus:ring-2 focus:ring-info/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? '登录中...' : '登 录'}
+            {isLoading ? '登录中...' : useFaceRecognition ? '开始人脸识别' : '登 录'}
           </button>
         </form>
 
         <div className="mt-6 pt-6 border-t border-gray-700">
-          <p className="text-xs text-gray-500 text-center">
+          <p className="text-xs text-gray-500 text-center mb-2">
             测试账号：任意用户名 + 任意密码 或直接点登录
           </p>
+          <div className="flex justify-center gap-2 mt-3">
+            <button
+              onClick={() => { setUsername('张护士'); setUseFaceRecognition(false); }}
+              className="px-3 py-1 text-xs bg-dark/50 border border-gray-600 rounded text-gray-400 hover:border-info/50 hover:text-info transition-colors"
+            >
+              护士账号
+            </button>
+            <button
+              onClick={() => { setUsername('李医生'); setUseFaceRecognition(false); }}
+              className="px-3 py-1 text-xs bg-dark/50 border border-gray-600 rounded text-gray-400 hover:border-info/50 hover:text-info transition-colors"
+            >
+              医生账号
+            </button>
+            <button
+              onClick={() => { setUsername('王主任'); setUseFaceRecognition(false); }}
+              className="px-3 py-1 text-xs bg-dark/50 border border-gray-600 rounded text-gray-400 hover:border-info/50 hover:text-info transition-colors"
+            >
+              主任账号
+            </button>
+            <button
+              onClick={() => { setUsername('赵院长'); setUseFaceRecognition(false); }}
+              className="px-3 py-1 text-xs bg-dark/50 border border-gray-600 rounded text-gray-400 hover:border-info/50 hover:text-info transition-colors"
+            >
+              院长账号
+            </button>
+          </div>
         </div>
       </div>
+
+      {showFaceModal && (
+        <FaceRecognition
+          onSuccess={handleFaceSuccess}
+          onCancel={() => setShowFaceModal(false)}
+        />
+      )}
     </div>
   );
 };

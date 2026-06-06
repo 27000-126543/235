@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
-import { Medicine, PurchaseRequest } from '../../types';
+import { Medicine } from '../../types';
 
 const PharmacyPanel: React.FC = () => {
-  const { medicines, purchaseRequests, currentUser, addPurchaseRequest, approvePurchaseRequest, rejectPurchaseRequest, addNotification } = useHospitalStore();
+  const { medicines, purchaseRequests, currentUser, addPurchaseRequest, approvePurchaseRequest, rejectPurchaseRequest, updateMedicineStock, loadPurchaseRequests } = useHospitalStore();
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestQuantity, setRequestQuantity] = useState(100);
+  const [stockAdjust, setStockAdjust] = useState<{ [key: string]: number }>({});
+
+  useEffect(() => {
+    loadPurchaseRequests();
+  }, [loadPurchaseRequests]);
 
   const lowStockMedicines = medicines.filter(m => m.isLowStock);
   const expiringMedicines = medicines.filter(m => m.isExpiringSoon);
@@ -26,11 +31,36 @@ const PharmacyPanel: React.FC = () => {
     return false;
   };
 
-  const handleRequestPurchase = () => {
+  const getFilteredRequests = () => {
+    if (!currentUser) return purchaseRequests;
+    
+    if (currentUser.role === 'director') {
+      return purchaseRequests.filter(pr => pr.status === 'pending_director' || pr.status === 'pending_vice' || pr.status === 'approved' || pr.status === 'rejected');
+    }
+    if (currentUser.role === 'admin') {
+      return purchaseRequests.filter(pr => pr.status === 'pending_vice' || pr.status === 'approved' || pr.status === 'rejected');
+    }
+    return purchaseRequests;
+  };
+
+  const handleRequestPurchase = async () => {
     if (selectedMedicine) {
-      addPurchaseRequest(selectedMedicine.id, requestQuantity);
+      await addPurchaseRequest(selectedMedicine.id, requestQuantity);
       setShowRequestModal(false);
       setRequestQuantity(100);
+    }
+  };
+
+  const handleStockChange = (medicineId: string, value: string) => {
+    const num = parseInt(value) || 0;
+    setStockAdjust(prev => ({ ...prev, [medicineId]: num }));
+  };
+
+  const applyStockChange = (medicineId: string) => {
+    const adjust = stockAdjust[medicineId] || 0;
+    if (adjust !== 0) {
+      updateMedicineStock(medicineId, adjust);
+      setStockAdjust(prev => ({ ...prev, [medicineId]: 0 }));
     }
   };
 
@@ -40,6 +70,28 @@ const PharmacyPanel: React.FC = () => {
         <span className="w-1 h-6 bg-warning rounded" />
         药房 - 库存管理与采购审批
       </h2>
+
+      {currentUser && (
+        <div className="p-3 bg-info/10 border border-info/30 rounded-lg flex items-center justify-between">
+          <div>
+            <span className="text-info font-medium">当前用户: </span>
+            <span className="text-white">{currentUser.name}</span>
+            <span className="text-gray-400 ml-2">
+              ({currentUser.role === 'nurse' ? '护士' : currentUser.role === 'doctor' ? '医生' : currentUser.role === 'director' ? '科主任' : '院长'})
+            </span>
+          </div>
+          {currentUser.role === 'director' && (
+            <span className="px-3 py-1 bg-warning/20 text-warning text-sm rounded">
+              可审批: 待科主任审批
+            </span>
+          )}
+          {currentUser.role === 'admin' && (
+            <span className="px-3 py-1 bg-success/20 text-success text-sm rounded">
+              可审批: 待分管院长审批
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-panel panel-border rounded-lg p-4">
@@ -64,16 +116,17 @@ const PharmacyPanel: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-panel panel-border rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">药品库存</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">药品库存管理</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="text-left py-3 px-2 text-gray-400">药品名称</th>
                   <th className="text-left py-3 px-2 text-gray-400">规格</th>
-                  <th className="text-left py-3 px-2 text-gray-400">库存</th>
+                  <th className="text-left py-3 px-2 text-gray-400">当前库存</th>
                   <th className="text-left py-3 px-2 text-gray-400">安全库存</th>
                   <th className="text-left py-3 px-2 text-gray-400">有效期</th>
+                  <th className="text-left py-3 px-2 text-gray-400">快速调整</th>
                   <th className="text-left py-3 px-2 text-gray-400">状态</th>
                   <th className="text-left py-3 px-2 text-gray-400">操作</th>
                 </tr>
@@ -97,9 +150,28 @@ const PharmacyPanel: React.FC = () => {
                       {medicine.expiryDate}
                     </td>
                     <td className="py-3 px-2">
-                      {medicine.isLowStock && <span className="px-2 py-0.5 bg-danger/20 text-danger text-xs rounded mr-1">低库存</span>}
-                      {medicine.isExpiringSoon && <span className="px-2 py-0.5 bg-warning/20 text-warning text-xs rounded">即将过期</span>}
-                      {!medicine.isLowStock && !medicine.isExpiringSoon && <span className="px-2 py-0.5 bg-success/20 text-success text-xs rounded">正常</span>}
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="number"
+                          value={stockAdjust[medicine.id] || ''}
+                          onChange={e => handleStockChange(medicine.id, e.target.value)}
+                          className="w-16 px-2 py-1 bg-dark/50 border border-gray-600 rounded text-white text-xs"
+                          placeholder="调整量"
+                        />
+                        <button
+                          onClick={() => applyStockChange(medicine.id)}
+                          className="px-2 py-1 bg-success/20 text-success text-xs rounded hover:bg-success/30"
+                        >
+                          应用
+                        </button>
+                      </div>
+                    </td>
+                    <td className="py-3 px-2">
+                      <div className="flex flex-wrap gap-1">
+                        {medicine.isLowStock && <span className="px-2 py-0.5 bg-danger/20 text-danger text-xs rounded">低库存</span>}
+                        {medicine.isExpiringSoon && <span className="px-2 py-0.5 bg-warning/20 text-warning text-xs rounded">即将过期</span>}
+                        {!medicine.isLowStock && !medicine.isExpiringSoon && <span className="px-2 py-0.5 bg-success/20 text-success text-xs rounded">正常</span>}
+                      </div>
                     </td>
                     <td className="py-3 px-2">
                       <button
@@ -122,8 +194,8 @@ const PharmacyPanel: React.FC = () => {
 
         <div className="bg-panel panel-border rounded-lg p-4">
           <h3 className="text-lg font-semibold text-white mb-4">采购审批流</h3>
-          <div className="space-y-3">
-            {purchaseRequests.map(pr => (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {getFilteredRequests().map(pr => (
               <div key={pr.id} className="p-3 bg-dark/30 rounded-lg border border-gray-700">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-white font-medium">{pr.medicineName}</span>
@@ -165,20 +237,23 @@ const PharmacyPanel: React.FC = () => {
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-white">1</div>
-                <span className="text-gray-400">药房管理员发起申请</span>
+                <span className="text-gray-400">药房管理员发起申请 (pending_pharmacy)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-warning/50 flex items-center justify-center text-white">2</div>
-                <span className="text-gray-400">药剂科主任审批</span>
+                <span className="text-gray-400">药剂科主任审批 (pending_director)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-info/50 flex items-center justify-center text-white">3</div>
-                <span className="text-gray-400">分管院长审批</span>
+                <span className="text-gray-400">分管院长审批 (pending_vice)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-success/50 flex items-center justify-center text-white">4</div>
-                <span className="text-gray-400">采购执行</span>
+                <span className="text-gray-400">采购执行 (approved)</span>
               </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
+              数据存储: IndexedDB (浏览器本地持久化)
             </div>
           </div>
         </div>
@@ -200,13 +275,27 @@ const PharmacyPanel: React.FC = () => {
             </div>
             <div className="mb-6">
               <label className="block text-gray-400 text-sm mb-2">申请数量 ({selectedMedicine.unit})</label>
-              <input
-                type="number"
-                value={requestQuantity}
-                onChange={e => setRequestQuantity(Number(e.target.value))}
-                className="w-full px-4 py-3 bg-dark/50 border border-info/30 rounded-lg text-white focus:outline-none focus:border-info"
-                min="1"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={requestQuantity}
+                  onChange={e => setRequestQuantity(Number(e.target.value))}
+                  className="flex-1 px-4 py-3 bg-dark/50 border border-info/30 rounded-lg text-white focus:outline-none focus:border-info"
+                  min="1"
+                />
+                <button
+                  onClick={() => setRequestQuantity(Math.max(1, requestQuantity - 50))}
+                  className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                >
+                  -50
+                </button>
+                <button
+                  onClick={() => setRequestQuantity(requestQuantity + 50)}
+                  className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                >
+                  +50
+                </button>
+              </div>
             </div>
             <div className="flex gap-3">
               <button

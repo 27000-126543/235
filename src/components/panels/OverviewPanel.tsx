@@ -2,7 +2,17 @@ import React from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
 
 const OverviewPanel: React.FC = () => {
-  const { departments, beds, emergencyPatients, medicines, operationRooms, instrumentPacks, wasteBins } = useHospitalStore();
+  const {
+    departments,
+    beds,
+    emergencyPatients,
+    medicines,
+    operationRooms,
+    instrumentPacks,
+    wasteBins,
+    wsConnected,
+    updateQueueCount
+  } = useHospitalStore();
 
   const stats = [
     { label: '今日门诊量', value: departments.reduce((sum, d) => sum + d.queueCount + d.doctors.reduce((s, doc) => s + doc.todayPatients, 0), 0), color: 'text-info', icon: '👥' },
@@ -15,24 +25,22 @@ const OverviewPanel: React.FC = () => {
     { label: '超时器械包', value: instrumentPacks.filter(p => p.isOverdue).length, color: 'text-yellow-400', icon: '🧰' },
   ];
 
-  const recentAlerts = [
-    { type: 'danger', text: '住院楼102床患者生命体征异常', time: '刚刚' },
-    { type: 'warning', text: '头孢克肟片库存低于安全线', time: '5分钟前' },
-    { type: 'warning', text: '急诊科2号垃圾桶已满85%', time: '10分钟前' },
-    { type: 'info', text: '手术室1手术即将结束', time: '15分钟前' },
-    { type: 'warning', text: '外科手术包A清洗超时', time: '20分钟前' },
-  ];
-
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <span className="w-1 h-6 bg-info rounded" />
-        医院运营总览
-      </h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <span className="w-1 h-6 bg-info rounded" />
+          医院运营总览
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-success animate-pulse' : 'bg-gray-500'}`} />
+          <span className="text-xs text-gray-400">{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</span>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, idx) => (
-          <div key={idx} className="bg-panel panel-border rounded-lg p-4">
+          <div key={idx} className="bg-panel panel-border rounded-lg p-4 hover:border-info/50 transition-colors">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-gray-400 text-sm">{stat.label}</div>
@@ -46,33 +54,30 @@ const OverviewPanel: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-panel panel-border rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">实时告警</h3>
-          <div className="space-y-3">
-            {recentAlerts.map((alert, idx) => (
-              <div key={idx} className={`flex items-center gap-3 p-3 rounded-lg ${
-                alert.type === 'danger' ? 'bg-danger/10 border border-danger/30' :
-                alert.type === 'warning' ? 'bg-warning/10 border border-warning/30' :
-                'bg-info/10 border border-info/30'
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${
-                  alert.type === 'danger' ? 'bg-danger' :
-                  alert.type === 'warning' ? 'bg-warning' : 'bg-info'
-                } animate-pulse`} />
-                <span className="flex-1 text-white text-sm">{alert.text}</span>
-                <span className="text-gray-500 text-xs">{alert.time}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-panel panel-border rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">科室排队情况</h3>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-between">
+            <span>科室排队情况</span>
+            <span className="text-xs text-gray-500">点击 +/- 调整人数</span>
+          </h3>
           <div className="space-y-3">
             {departments.map(dept => (
               <div key={dept.id} className="space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-white text-sm">{dept.name}</span>
-                  <span className="text-info font-mono">{dept.queueCount} 人</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateQueueCount(dept.id, -1)}
+                      className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded text-white text-xs hover:bg-gray-600"
+                    >
+                      -
+                    </button>
+                    <span className="text-info font-mono w-12 text-center">{dept.queueCount} 人</span>
+                    <button
+                      onClick={() => updateQueueCount(dept.id, 1)}
+                      className="w-6 h-6 flex items-center justify-center bg-gray-700 rounded text-white text-xs hover:bg-gray-600"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <div className="w-full bg-dark/50 rounded-full h-2">
                   <div
@@ -86,6 +91,62 @@ const OverviewPanel: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="bg-panel panel-border rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-white mb-4">快速统计</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-dark/30 rounded-lg">
+              <div className="text-gray-400 text-xs">手术室状态</div>
+              <div className="flex gap-2 mt-2">
+                <span className="px-2 py-1 bg-success/20 text-success text-xs rounded">
+                  {operationRooms.filter(r => r.status === 'available').length} 空闲
+                </span>
+                <span className="px-2 py-1 bg-danger/20 text-danger text-xs rounded">
+                  {operationRooms.filter(r => r.status === 'occupied').length} 使用
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-dark/30 rounded-lg">
+              <div className="text-gray-400 text-xs">急诊分诊</div>
+              <div className="flex gap-2 mt-2">
+                <span className="px-2 py-1 bg-danger/20 text-danger text-xs rounded">
+                  {emergencyPatients.filter(p => p.triageLevel === 'red').length} 危重
+                </span>
+                <span className="px-2 py-1 bg-warning/20 text-warning text-xs rounded">
+                  {emergencyPatients.filter(p => p.triageLevel === 'yellow').length} 急症
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-dark/30 rounded-lg">
+              <div className="text-gray-400 text-xs">床位护理等级</div>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <span className="px-2 py-1 bg-danger/20 text-danger text-xs rounded">
+                  {beds.filter(b => b.nursingLevel === 'critical').length} 特级
+                </span>
+                <span className="px-2 py-1 bg-warning/20 text-warning text-xs rounded">
+                  {beds.filter(b => b.nursingLevel === 'primary').length} 一级
+                </span>
+                <span className="px-2 py-1 bg-info/20 text-info text-xs rounded">
+                  {beds.filter(b => b.nursingLevel === 'secondary').length} 二级
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-dark/30 rounded-lg">
+              <div className="text-gray-400 text-xs">异常床位</div>
+              <div className="mt-2">
+                <span className={`px-3 py-1 text-xs rounded ${
+                  beds.filter(b => b.isAbnormal).length > 0
+                    ? 'bg-danger/20 text-danger pulse-red'
+                    : 'bg-success/20 text-success'
+                }`}>
+                  {beds.filter(b => b.isAbnormal).length > 0
+                    ? `⚠️ ${beds.filter(b => b.isAbnormal).length} 床异常`
+                    : '✅ 全部正常'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -113,43 +174,41 @@ const OverviewPanel: React.FC = () => {
         </div>
 
         <div className="bg-panel panel-border rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">急诊分诊</h3>
-          <div className="space-y-3">
-            {['red', 'yellow', 'green'].map(level => {
-              const count = emergencyPatients.filter(p => p.triageLevel === level).length;
-              const labels: Record<string, string> = { red: '红区（危重）', yellow: '黄区（急症）', green: '绿区（非急症）' };
-              const colors: Record<string, string> = { red: 'bg-danger', yellow: 'bg-warning', green: 'bg-success' };
-              return (
-                <div key={level} className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg ${colors[level]}/20 flex items-center justify-center`}>
-                    <span className={`font-bold ${colors[level].replace('bg-', 'text-')}`}>{count}</span>
-                  </div>
-                  <span className="text-white text-sm">{labels[level]}</span>
-                </div>
-              );
-            })}
+          <h3 className="text-lg font-semibold text-white mb-4">药品库存预警</h3>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {medicines.filter(m => m.isLowStock).slice(0, 5).map(medicine => (
+              <div key={medicine.id} className="flex items-center justify-between p-2 rounded bg-danger/10 border border-danger/30">
+                <span className="text-white text-sm">{medicine.name}</span>
+                <span className="text-danger text-xs font-mono">{medicine.stock}/{medicine.safetyStock}</span>
+              </div>
+            ))}
+            {medicines.filter(m => m.isLowStock).length === 0 && (
+              <div className="text-gray-500 text-center py-4 text-sm">✅ 无低库存药品</div>
+            )}
           </div>
         </div>
 
         <div className="bg-panel panel-border rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">床位护理等级</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">系统状态</h3>
           <div className="space-y-3">
-            {[
-              { level: 'critical', label: '特级护理', color: 'bg-danger' },
-              { level: 'primary', label: '一级护理', color: 'bg-warning' },
-              { level: 'secondary', label: '二级护理', color: 'bg-info' },
-              { level: 'normal', label: '三级护理', color: 'bg-success' },
-            ].map(item => {
-              const count = beds.filter(b => b.nursingLevel === item.level).length;
-              return (
-                <div key={item.level} className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg ${item.color}/20 flex items-center justify-center`}>
-                    <span className={`font-bold ${item.color.replace('bg-', 'text-')}`}>{count}</span>
-                  </div>
-                  <span className="text-white text-sm">{item.label}</span>
-                </div>
-              );
-            })}
+            <div className="flex items-center justify-between p-2 bg-dark/30 rounded">
+              <span className="text-gray-400 text-sm">WebSocket</span>
+              <span className={`text-xs ${wsConnected ? 'text-success' : 'text-gray-500'}`}>
+                {wsConnected ? '● 已连接' : '○ 未连接'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-2 bg-dark/30 rounded">
+              <span className="text-gray-400 text-sm">数据存储</span>
+              <span className="text-xs text-info">● IndexedDB</span>
+            </div>
+            <div className="flex items-center justify-between p-2 bg-dark/30 rounded">
+              <span className="text-gray-400 text-sm">生命体征模拟</span>
+              <span className="text-xs text-success">● 运行中</span>
+            </div>
+            <div className="flex items-center justify-between p-2 bg-dark/30 rounded">
+              <span className="text-gray-400 text-sm">3D场景</span>
+              <span className="text-xs text-success">● 已加载</span>
+            </div>
           </div>
         </div>
       </div>

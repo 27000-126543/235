@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
 
 const OutpatientPanel: React.FC = () => {
-  const { departments, updateWindowCount, addNotification } = useHospitalStore();
+  const { departments, updateWindowCount, updateQueueCount, updateDoctorPatients, addNotification } = useHospitalStore();
   const [selectedDept, setSelectedDept] = useState(departments[0]?.id);
 
   const currentDept = departments.find(d => d.id === selectedDept);
@@ -17,7 +17,9 @@ const OutpatientPanel: React.FC = () => {
     
     if (delta !== 0) {
       updateWindowCount(deptId, delta);
-      addNotification(`根据历史预测，${dept.name}已自动调整开放窗口至${optimalWindows}个`);
+      addNotification(`根据历史预测，${dept.name}已自动调整开放窗口至${optimalWindows}个`, 'info');
+    } else {
+      addNotification(`${dept.name}窗口数量已处于最优配置`, 'success');
     }
   };
 
@@ -46,6 +48,27 @@ const OutpatientPanel: React.FC = () => {
               <span className="text-gray-400">窗口: {dept.openWindows}/{dept.maxWindows}</span>
               <span className="text-success">{dept.doctors.filter(d => d.isOnDuty).length}人值班</span>
             </div>
+            
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateQueueCount(dept.id, -1);
+                }}
+                className="flex-1 py-1 bg-danger/20 text-danger text-xs rounded hover:bg-danger/30 transition-colors"
+              >
+                - 排队
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateQueueCount(dept.id, 1);
+                }}
+                className="flex-1 py-1 bg-success/20 text-success text-xs rounded hover:bg-success/30 transition-colors"
+              >
+                + 排队
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -59,7 +82,7 @@ const OutpatientPanel: React.FC = () => {
                 onClick={() => handleAutoAdjust(currentDept.id)}
                 className="px-3 py-1 bg-info/20 text-info text-sm rounded hover:bg-info/30 transition-colors"
               >
-                智能调整窗口
+                🤖 智能调整窗口
               </button>
             </div>
 
@@ -71,7 +94,7 @@ const OutpatientPanel: React.FC = () => {
                     key={i}
                     className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all ${
                       isOpen
-                        ? 'bg-success/20 border-2 border-success animate-pulse'
+                        ? 'bg-success/20 border-2 border-success'
                         : 'bg-gray-800/50 border border-gray-700'
                     }`}
                   >
@@ -103,9 +126,10 @@ const OutpatientPanel: React.FC = () => {
 
             <div className="mt-4 p-3 bg-dark/50 rounded-lg">
               <div className="text-sm text-gray-400 mb-2">预测分析</div>
-              <div className="text-white">
-                当前排队: {currentDept.queueCount}人 | 
-                预计等待: {Math.ceil(currentDept.queueCount / currentDept.openWindows * 5)}分钟
+              <div className="text-white space-y-1">
+                <div>当前排队: <span className="text-info font-mono">{currentDept.queueCount}人</span></div>
+                <div>预计等待: <span className="text-warning font-mono">{Math.ceil(currentDept.queueCount / currentDept.openWindows * 5)}分钟</span></div>
+                <div>最优窗口数: <span className="text-success font-mono">{Math.ceil(currentDept.queueCount / 15)}个</span></div>
               </div>
             </div>
           </div>
@@ -141,6 +165,21 @@ const OutpatientPanel: React.FC = () => {
                       <div className="text-gray-400 text-xs">今日接诊: {doctor.todayPatients}人</div>
                     </div>
                   </div>
+                  
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => updateDoctorPatients(currentDept.id, doctor.id, -1)}
+                      className="flex-1 py-1 bg-gray-700/50 text-gray-300 text-xs rounded hover:bg-gray-600 transition-colors"
+                    >
+                      - 接诊
+                    </button>
+                    <button
+                      onClick={() => updateDoctorPatients(currentDept.id, doctor.id, 1)}
+                      className="flex-1 py-1 bg-info/20 text-info text-xs rounded hover:bg-info/30 transition-colors"
+                    >
+                      + 接诊
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -150,29 +189,34 @@ const OutpatientPanel: React.FC = () => {
 
       <div className="bg-panel panel-border rounded-lg p-4">
         <h3 className="text-lg font-semibold text-white mb-4">3D窗口动画模拟</h3>
-        <div className="flex items-end justify-center gap-4 h-40">
+        <div className="flex items-end justify-center gap-6 h-48">
           {departments.map((dept, deptIdx) => (
             <div key={dept.id} className="flex flex-col items-center">
-              <div className="flex gap-1 mb-2">
-                {Array.from({ length: dept.maxWindows }, (_, i) => {
-                  const isOpen = i < dept.openWindows;
-                  return (
-                    <div
-                      key={i}
-                      className={`w-6 h-10 rounded-t transition-all duration-500 ${
-                        isOpen
-                          ? 'bg-yellow-400 shadow-lg shadow-yellow-400/50'
-                          : 'bg-gray-700'
-                      }`}
-                      style={{
-                        transform: isOpen ? 'scaleY(1)' : 'scaleY(0.3)',
-                        transformOrigin: 'bottom',
-                      }}
-                    />
-                  );
-                })}
+              <div className="relative bg-gray-800 rounded-t-lg px-4 pt-6 pb-2" style={{ width: 80 + dept.maxWindows * 8, height: 100 + deptIdx * 10 }}>
+                <div className="absolute top-1 left-0 right-0 text-center text-xs text-gray-400">
+                  {dept.name}
+                </div>
+                <div className="flex gap-1 justify-center items-end h-full">
+                  {Array.from({ length: dept.maxWindows }, (_, i) => {
+                    const isOpen = i < dept.openWindows;
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-t transition-all duration-700 ease-out"
+                        style={{
+                          width: 10,
+                          height: isOpen ? 50 + Math.random() * 20 : 15,
+                          backgroundColor: isOpen ? '#fbbf24' : '#374151',
+                          boxShadow: isOpen ? '0 0 15px rgba(251, 191, 36, 0.6)' : 'none',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-              <span className="text-xs text-gray-400">{dept.name}</span>
+              <div className="mt-2 text-xs text-gray-400">
+                {dept.openWindows}/{dept.maxWindows} 窗口
+              </div>
             </div>
           ))}
         </div>

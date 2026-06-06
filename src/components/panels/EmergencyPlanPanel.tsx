@@ -2,7 +2,14 @@ import React from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
 
 const EmergencyPlanPanel: React.FC = () => {
-  const { emergencyPlans, activeEmergencyPlan, activateEmergencyPlan, beds, operationRooms } = useHospitalStore();
+  const {
+    emergencyPlans,
+    activeEmergencyPlan,
+    activateEmergencyPlan,
+    deactivateEmergencyPlan,
+    beds,
+    operationRooms
+  } = useHospitalStore();
 
   const typeIcons: Record<string, string> = {
     fire: '🔥',
@@ -25,10 +32,20 @@ const EmergencyPlanPanel: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <span className="w-1 h-6 bg-danger rounded" />
-        应急预案 - 一键调度
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <span className="w-1 h-6 bg-danger rounded" />
+          应急预案 - 一键调度
+        </h2>
+        {activeEmergencyPlan && (
+          <button
+            onClick={deactivateEmergencyPlan}
+            className="px-4 py-2 bg-success/20 text-success rounded-lg hover:bg-success/30 transition-colors text-sm"
+          >
+            ✅ 解除预案
+          </button>
+        )}
+      </div>
 
       {activeEmergencyPlan && (
         <div className="bg-danger/10 border-2 border-danger rounded-lg p-6 pulse-red">
@@ -42,6 +59,12 @@ const EmergencyPlanPanel: React.FC = () => {
                 </p>
               </div>
             </div>
+            <button
+              onClick={deactivateEmergencyPlan}
+              className="px-6 py-2 bg-success text-white rounded-lg hover:bg-success/80 transition-colors font-medium"
+            >
+              解除预案
+            </button>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-4">
@@ -127,20 +150,26 @@ const EmergencyPlanPanel: React.FC = () => {
                 </ul>
               </div>
 
-              {!plan.isActive ? (
-                <button
-                  onClick={() => activateEmergencyPlan(plan.id)}
-                  disabled={activeEmergencyPlan !== null}
-                  className="mt-4 w-full py-2 bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  <span>🚨</span>
-                  一键启动预案
-                </button>
-              ) : (
-                <div className="mt-4 p-3 bg-danger/20 rounded-lg text-center">
-                  <span className="text-danger">预案已启动，请在上方查看详情</span>
-                </div>
-              )}
+              <div className="mt-4 flex gap-2">
+                {!plan.isActive ? (
+                  <button
+                    onClick={() => activateEmergencyPlan(plan.id)}
+                    disabled={activeEmergencyPlan !== null}
+                    className="flex-1 py-2 bg-danger/20 text-danger rounded hover:bg-danger/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <span>🚨</span>
+                    一键启动预案
+                  </button>
+                ) : (
+                  <button
+                    onClick={deactivateEmergencyPlan}
+                    className="flex-1 py-2 bg-success/20 text-success rounded hover:bg-success/30 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>✅</span>
+                    解除预案
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

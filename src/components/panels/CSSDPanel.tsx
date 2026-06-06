@@ -1,8 +1,9 @@
 import React from 'react';
 import { useHospitalStore } from '../../store/useHospitalStore';
+import { InstrumentPack } from '../../types';
 
 const CSSDPanel: React.FC = () => {
-  const { instrumentPacks, addNotification } = useHospitalStore();
+  const { instrumentPacks, addNotification, updateInstrumentPackStatus } = useHospitalStore();
 
   const statusColors: Record<string, string> = {
     cleaning: 'bg-info',
@@ -20,6 +21,14 @@ const CSSDPanel: React.FC = () => {
     in_use: '使用中',
   };
 
+  const statusFlow: Record<string, InstrumentPack['status']> = {
+    cleaning: 'disinfecting',
+    disinfecting: 'packaging',
+    packaging: 'ready',
+    ready: 'in_use',
+    in_use: 'cleaning',
+  };
+
   const getTimeElapsed = (isoString: string) => {
     const diff = Date.now() - new Date(isoString).getTime();
     const minutes = Math.floor(diff / 60000);
@@ -32,6 +41,13 @@ const CSSDPanel: React.FC = () => {
     const pack = instrumentPacks.find(p => p.id === packId);
     if (pack) {
       addNotification(`已生成${pack.name}的追踪记录`);
+    }
+  };
+
+  const handleNextStatus = (packId: string, currentStatus: string) => {
+    const nextStatus = statusFlow[currentStatus];
+    if (nextStatus) {
+      updateInstrumentPackStatus(packId, nextStatus);
     }
   };
 
@@ -73,12 +89,20 @@ const CSSDPanel: React.FC = () => {
                 <div className="text-danger text-sm mt-1">
                   已超时: {getTimeElapsed(pack.lastCleanTime)}
                 </div>
-                <button
-                  onClick={() => handleTrack(pack.id)}
-                  className="mt-2 w-full py-1 bg-danger/30 text-danger text-xs rounded hover:bg-danger/40 transition-colors"
-                >
-                  生成追踪记录
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleNextStatus(pack.id, pack.status)}
+                    className="flex-1 py-1 bg-info/20 text-info text-xs rounded hover:bg-info/30 transition-colors"
+                  >
+                    流转下一状态
+                  </button>
+                  <button
+                    onClick={() => handleTrack(pack.id)}
+                    className="flex-1 py-1 bg-danger/30 text-danger text-xs rounded hover:bg-danger/40 transition-colors"
+                  >
+                    追踪
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -96,7 +120,7 @@ const CSSDPanel: React.FC = () => {
                 <th className="text-left py-3 px-2 text-gray-400">状态</th>
                 <th className="text-left py-3 px-2 text-gray-400">上次清洗</th>
                 <th className="text-left py-3 px-2 text-gray-400">清洗时长</th>
-                <th className="text-left py-3 px-2 text-gray-400">状态</th>
+                <th className="text-left py-3 px-2 text-gray-400">超时状态</th>
                 <th className="text-left py-3 px-2 text-gray-400">操作</th>
               </tr>
             </thead>
@@ -106,10 +130,15 @@ const CSSDPanel: React.FC = () => {
                   <td className="py-3 px-2 text-white font-medium">{pack.name}</td>
                   <td className="py-3 px-2 text-gray-400">{pack.type}</td>
                   <td className="py-3 px-2">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${statusColors[pack.status]}/20`}>
-                      <span className={`w-2 h-2 rounded-full ${statusColors[pack.status]}`} />
-                      <span className="text-white">{statusNames[pack.status]}</span>
-                    </span>
+                    <select
+                      value={pack.status}
+                      onChange={(e) => updateInstrumentPackStatus(pack.id, e.target.value as InstrumentPack['status'])}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-transparent border-0 cursor-pointer ${statusColors[pack.status]}/20`}
+                    >
+                      {Object.entries(statusNames).map(([key, name]) => (
+                        <option key={key} value={key} className="bg-dark">{name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td className="py-3 px-2 text-gray-400">{getTimeElapsed(pack.lastCleanTime)}前</td>
                   <td className="py-3 px-2 text-gray-400">{pack.cleaningDuration}分钟</td>
@@ -121,12 +150,20 @@ const CSSDPanel: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-2">
-                    <button
-                      onClick={() => handleTrack(pack.id)}
-                      className="px-3 py-1 bg-cyan-500/20 text-cyan-400 text-xs rounded hover:bg-cyan-500/30 transition-colors"
-                    >
-                      追踪
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleNextStatus(pack.id, pack.status)}
+                        className="px-3 py-1 bg-cyan-500/20 text-cyan-400 text-xs rounded hover:bg-cyan-500/30 transition-colors"
+                      >
+                        下一状态
+                      </button>
+                      <button
+                        onClick={() => handleTrack(pack.id)}
+                        className="px-3 py-1 bg-info/20 text-info text-xs rounded hover:bg-info/30 transition-colors"
+                      >
+                        追踪
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
